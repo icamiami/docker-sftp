@@ -59,7 +59,10 @@ spec:
             - name: KUBERNETES_CLUSTER_CONTEXT
               value: CLUSTER_CONTEXT_VALUE
             - name: ACCESS_TOKEN
-              value: ACCESS_TOKEN_VALUE
+              valueFrom:
+                secretKeyRef:
+                  name: github
+                  key: token
           livenessProbe:
             tcpSocket:
               port: ssh
