@@ -1,5 +1,5 @@
-FROM node:14-alpine
-ENV VERSION=v1.23.0
+FROM node:20-alpine
+ENV VERSION=v1.29.0
 ENV NODE_ENV=production
 ENV SERVICE_ENABLE_SSHD=true
 ENV SERVICE_ENABLE_API=true
@@ -16,6 +16,16 @@ RUN apk add --no-cache git openssh nfs-utils rpcbind curl ca-certificates nano t
   && cp /usr/share/zoneinfo/America/New_York /etc/localtime \
   && echo "America/New_York" >  /etc/timezone \
   && apk del tzdata
+
+RUN curl -sSL https://sdk.cloud.google.com > /tmp/gcl && bash /tmp/gcl --install-dir=/root --disable-prompts
+
+ENV PATH $PATH:/root/google-cloud-sdk/bin
+
+#RUN gcloud components update kubectl
+
+RUN gcloud components install gke-gcloud-auth-plugin
+
+ENV USE_GKE_GCLOUD_AUTH_PLUGIN True
 
 RUN \
   npm -g install pm2

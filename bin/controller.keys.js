@@ -27,6 +27,10 @@ var _ = require('lodash');
 
 module.exports.updateKeys = function updateKeys(options, taskCallback) {
 
+    let allowedRoles = process.env.ALLOW_SSH_ACCESS_ROLES || "admin,maintain,write";
+    let productionBranch = process.env.PRODUCTION_BRANCH || "production";
+    let allowedRolesForProd = process.env.ALLOW_SSH_ACCES_PROD_ROLES || "admin";
+
     taskCallback = 'function' === typeof taskCallback ? taskCallback : function taskCallback() {
 
         if (process.env.SLACK_NOTIFICACTION_URL && process.env.SLACK_NOTIFICACTION_URL.indexOf("https") === 0) {
@@ -98,7 +102,7 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
             let body = _.get(response, "data", {});
             if (_.size(_.get(body, 'items', [])) === 0) {
                 console.error("No response from container lookup at [%s].", _container_url);
-                console.error(" -err ", err);
+                console.error("Error fetching Kuberneter Pods", err.message);
                 console.error(" -headers ", _.get(resp, 'headers'));
                 //body = require('../static/fixtures/pods');
                 return false;
@@ -124,10 +128,6 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
                 }
 
                 var _ssh_user = _labels['ci.rabbit.ssh.user'];
-
-                if (!_ssh_user) {
-                    return;
-                }
 
                 // @todo May need to identify non-primary-branch apps here, or use a special label
                 _applications[_ssh_user] = {
@@ -177,19 +177,22 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
 
                         // get just the permissions, add users to application
                         ('object' === typeof body && body.length > 0 ? body : []).forEach(function(thisUser) {
-
-                            _applications[data.sshUser].users[thisUser.login] = {
-                                _id: thisUser.login,
-                                permissions: thisUser.permissions
-                            };
-                            _users[thisUser.login] = _users[thisUser.login] || [];
-                            _users[thisUser.login].push(data._id);
+                            // provide access only for users with roles: `maintain` and `admin`
+                            if ((_.includes(_.split(allowedRoles, ","), thisUser.role_name) && (!data.sshUser.includes('.' + productionBranch)) || 
+                            _.includes(_.split(allowedRolesForProd, ","), thisUser.role_name))) {
+                                _applications[data.sshUser].users[thisUser.login] = {
+                                    _id: thisUser.login,
+                                    permissions: thisUser.permissions
+                                };
+                                _users[thisUser.login] = _users[thisUser.login] || [];
+                                _users[thisUser.login].push(data._id);
+                            }
                         });
 
                         callback();
                     })
                     .catch(err => {
-                        console.error(" -err ", err);
+                        console.error(" Error fetching collaborators for " + data._id, err.message);
                         callback();
                     });
 
@@ -199,7 +202,7 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
         .catch(err => {
             console.log('getPods error: ', err.message);
             console.error("No response from container lookup at [%s].", _container_url);
-            console.error(" -err ", err);
+            console.error("Error processing: ", err.message);
             //console.error(" -headers ", _.get(resp, 'headers'));
             //body = require('../static/fixtures/pods');
             return false;
@@ -301,11 +304,11 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
                     containerName: _.get(_applications[appID], 'containers[0].containerName'),
                     podName: _.get(_applications[appID], 'containers[0].podName'),
                     user_data: userData._id,
-                    CONNECTION_STRING: ['-n', _applications[appID].namespace, ' ', _.get(_applications[appID], 'containers[0].podName'), ' -c ', _.get(_applications[appID], 'containers[0].containerName')].join(' ')
+                    CONNECTION_STRING: [_applications[appID].namespace, ' ', _.get(_applications[appID], 'containers[0].podName'), ' -c ', _.get(_applications[appID], 'containers[0].containerName')].join(' ')
                 };
 
                 _.get(_allKeys, userData._id, []).forEach(function(thisUsersKey) {
-                    writableKeys.push('environment="CONNECTION_STRING=' + _envs.CONNECTION_STRING + '"   ' + thisUsersKey);
+                    writableKeys.push('environment="ENV_VARS=' + _envs.CONNECTION_STRING + ';'+userData._id+'"   ' + thisUsersKey);
                 })
 
             });
@@ -315,7 +318,7 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
                 fs.writeFile(_path, writableKeys.join("\n"), function(err) {
 
                     if (err) {
-                        return console.log(err);
+                        return console.error(err.message);
                     }
 
                     debug("Wrote SSH Key file for [%s] identified as [%s] user.", appID, _applications[appID].sshUser);
@@ -335,7 +338,7 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
                     fs.writeFile(_container_path, writableKeys.join("\n"), function(err) {
 
                         if (err) {
-                            return console.log(err);
+                            return console.error(err.message);
                         }
 
                         console.log("Wrote SSH Key file for [%s] applications contianer [%s].", appID, _.get(singleContainer, 'podName'));
@@ -357,7 +360,7 @@ module.exports.updateKeys = function updateKeys(options, taskCallback) {
         fs.readFile(_full_path, 'utf8', function(err, source) {
 
             if (err) {
-                return console.log(err);
+                return console.error(err.message);
             }
 
             var userFile = Mustache.render(source, {

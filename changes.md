@@ -1,3 +1,39 @@
+### 0.2.9
+* Forwarded `sshd` logs to `container` logs
+
+### 0.2.8
+* updated `NodeJS` version to `20`
+* updated `NodeJS Modules` to the latest versions
+* fixed issue with `SFTP` connection
+* prevented access for the `root` user
+* added processing `SLACK_NOTIFICACTION_CHANNEL` and `SLACK_NOTIFICACTION_URL` environment variables in `GitHub Action`
+* updated `GitHub Action` `Build and Deploy to GKE`
+* added additional logging
+
+### 0.2.7
+* updated curl to 8.5.0 because of vulnerability
+* access is allowed for the admin role in production
+
+### 0.2.6
+* updated kubectl version
+* changed gcloud installation logic
+
+### 0.2.5
+* upgraded node to 18
+* added gcloud
+* added gke-gcloud-auth-plugin
+* moved docker image from GCR to AR
+
+### 0.2.4
+* Added an option to set roles by `ALLOW_SSH_ACCESS_ROLES` env. Set `admin`, `maintain`, `write` by default.
+* Added the action to create a GitHub release.
+
+### 0.2.3
+* Prevent access to `production` containers.
+
+### 0.2.2
+* Prevent access to users with roles: `Read`, `Triage` and `Write`. Provide access only for roles: `Maintain` and `Admin`.
+
 ### 0.2.1
 * Fixed getPods endpoint for getting pods from all namespaces
 
