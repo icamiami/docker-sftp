@@ -11,7 +11,7 @@ on:
 jobs:
   sync-fork:
     if: ${{ github.repository != 'udx/docker-sftp' }}
-    uses: udx/gh-workflows/.github/workflows/fork-sync.yml@master
+    uses: icamiami/gh-workflows/.github/workflows/fork-sync.yml@master
     secrets:
       gh_token: ${{ secrets.GH_TOKEN }}
       slack_webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
