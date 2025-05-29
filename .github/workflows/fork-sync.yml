@@ -1,7 +1,7 @@
 name: Fork Sync
 
 permissions:
-  contents: read
+  contents: write
 
 on:
   schedule:
@@ -11,7 +11,20 @@ on:
 jobs:
   sync-fork:
     if: ${{ github.repository != 'udx/docker-sftp' }}
-    uses: icamiami/gh-workflows/.github/workflows/fork-sync.yml@master
-    secrets:
-      gh_token: ${{ secrets.GH_TOKEN }}
-      slack_webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+    runs-on: ubuntu-latest
+    steps:
+      # First checkout the private workflows repository using a PAT
+      - name: Checkout private workflows
+        uses: actions/checkout@v4
+        with:
+          repository: icamiami/gh-workflows
+          ref: master
+          token: ${{ secrets.GH_TOKEN }}
+          path: .github/private-workflows
+      
+      # Then use the local workflow
+      - name: Run fork sync workflow
+        uses: ./.github/private-workflows/.github/workflows/fork-sync.yml@master
+        with:
+          gh_token: ${{ secrets.GH_TOKEN }}
+          slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
