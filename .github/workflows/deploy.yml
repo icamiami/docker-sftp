@@ -1,108 +1,232 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+# Build and deploy the SFTP Gateway to Google Kubernetes Engine (GKE)
+#
+# Required GitHub Secrets:
+#
+# - Kubernetes Configuration:
+#   KUBERNETES_CLUSTER_ENDPOINT: API server address
+#   KUBERNETES_CLUSTER_NAMESPACE: Target namespace
+#   KUBERNETES_CLUSTER_CERTIFICATE: Cluster certificate
+#   KUBERNETES_CLUSTER_SERVICEACCOUNT: Service account name
+#   KUBERNETES_CLUSTER_USER_TOKEN: Service account token
+#
+# - Application Configuration:
+#   ACCESS_TOKEN: GitHub token for authentication
+#   SLACK_NOTIFICACTION_URL: Slack webhook URL
+#   SLACK_NOTIFICACTION_CHANNEL: Slack channel name
+#
+# - GCP Configuration:
+#   GKE_PROJECT: GCP project ID
+#   GKE_SA_KEY: Service account key for GCP
+#
+# Note: This workflow uses third-party actions that are pinned to specific versions for security.
 
-# GitHub recommends pinning actions to a commit SHA.
-# To get a newer version, you will need to update the SHA.
-# You can also reference a tag or branch, but the action may change without warning.
-
-name: Build and Deploy to GKE
+name: Build, Release and Deploy to GKE
 
 on:
   push:
     branches:
       - master
+      - latest
+      - develop-*
 
 env:
+  # GCP and GKE configuration
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
-  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}    # Add your cluster name here.
-  GKE_ZONE: ${{ secrets.GKE_ZONE }}   # Add your cluster zone here.
-  DEPLOYMENT_NAME: ${{ secrets.DEPLOYMENT_NAME }} # Add your deployment name here.
-  IMAGE: ${{ secrets.IMAGE }}
+  GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
+  GKE_REGION: ${{ vars.GKE_REGION }}
+
+  # Deployment configuration
+  DEPLOYMENT_NAME: ${{ secrets.DEPLOYMENT_NAME }}
+
+  # Notification configuration
   SLACK_NOTIFICACTION_URL: ${{ secrets.SLACK_NOTIFICACTION_URL }}
   SLACK_NOTIFICACTION_CHANNEL: ${{ secrets.SLACK_NOTIFICACTION_CHANNEL }}
+
+  # Artifact Registry configuration
+  AR_LOCATION: ${{ vars.AR_LOCATION }}
+  AR_REPOSITORY: ${{ vars.AR_REPOSITORY }}
+  IMAGE_NAME: ${{vars.AR_LOCATION}}-docker.pkg.dev/${{secrets.GKE_PROJECT}}/${{vars.AR_REPOSITORY}}
 
 jobs:
   setup-build-publish-deploy:
     name: Setup, Build, Publish, and Deploy
     runs-on: ubuntu-latest
-    #environment: production
+    if: github.event_name == 'push'
+    environment:
+      name: ${{ github.ref_name }}
+    permissions:
+      contents: write
+      checks: write
+      # required for all workflows
+      security-events: write
 
     steps:
-    - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # Setup gcloud CLI
-    - uses: google-github-actions/setup-gcloud@94337306dda8180d967a56932ceb4ddcf01edae7
-      with:
-        service_account_key: ${{ secrets.GKE_SA_KEY }}
-        project_id: ${{ secrets.GKE_PROJECT }}
+      # fetch Tag from package.json version
+      - name: Get Tag from package.json
+        id: version
+        run: echo "TAG=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-    # Configure Docker to use the gcloud command-line tool as a credential
-    # helper for authentication
-    - run: |-
-        gcloud --quiet auth configure-docker
+      # echo Tag
+      - name: Echo Tag
+        run: echo ${{ steps.version.outputs.TAG }}
 
-    # Get the GKE credentials so we can deploy to the cluster
-    - uses: google-github-actions/get-gke-credentials@fb08709ba27618c31c09e014e1d8364b02e5042e
-      with:
-        cluster_name: ${{ env.GKE_CLUSTER }}
-        location: ${{ env.GKE_ZONE }}
-        credentials: ${{ secrets.GKE_SA_KEY }}
+      # parse the changelog to get the release description
+      - name: Parse Changelog Entries
+        uses: actions/github-script@v7
+        id: changelog
+        with:
+          script: |
+            const { open } = require('fs/promises');
 
-    # Build the Docker image
-    - name: Build
-      run: |-
-        docker build \
-          --tag "gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA" \
-          --build-arg GITHUB_SHA="$GITHUB_SHA" \
-          --build-arg GITHUB_REF="$GITHUB_REF" \
-          .
+            const version ='${{ steps.version.outputs.TAG }}';
+            const delimiter = '### ';
+            const file = await open('./changes.md');
 
-    # Push the Docker image to Google Container Registry
-    - name: Publish
-      run: |-
-        docker push "gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA"
+            let description = [];
+            let found = false;
 
-    # Set up kustomize
-    - name: Set up Kustomize
-      run: |-
-        curl -sfLo kustomize https://github.com/kubernetes-sigs/kustomize/releases/download/v3.1.0/kustomize_3.1.0_linux_amd64
-        chmod u+x ./kustomize
+            for await (let line of file.readLines()) {
+              line = line.trim();
+              
+              if ( line.startsWith(`${delimiter}${version}`) ) {
+                found = true;
+                continue;
+              }
+              
+              if (!found) continue;
+              if ( line.startsWith(delimiter) )  break;
 
-    # Deploy secret variables
-    - run: |
-        sed -i.bak "s|CLUSTER_NAME_VALUE|${{ secrets.GKE_CLUSTER }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|CLUSTER_ENDPOINT_VALUE|${{ secrets.KUBERNETES_CLUSTER_ENDPOINT }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|CLUSTER_NAMESPACE_VALUE|${{ secrets.KUBERNETES_CLUSTER_NAMESPACE }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|CLUSTER_USER_TOKEN_VALUE|${{ secrets.KUBERNETES_CLUSTER_USER_TOKEN }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|CLUSTER_SERVICEACCOUNT_VALUE|${{ secrets.KUBERNETES_CLUSTER_SERVICEACCOUNT }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|CLUSTER_CERTIFICATE_VALUE|${{ secrets.KUBERNETES_CLUSTER_CERTIFICATE }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|CLUSTER_USER_SECRET_VALUE|${{ secrets.KUBERNETES_CLUSTER_USER_SECRET }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|CLUSTER_CONTEXT_VALUE|${{ secrets.KUBERNETES_CLUSTER_CONTEXT }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|ACCESS_TOKEN_VALUE|${{ secrets.ACCESS_TOKEN }}|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|IMAGE_VERSION|$GITHUB_SHA|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|GITHUB_ORG|$GITHUB_REPOSITORY_OWNER|g" bin/ci/service.yml
-    - run: |
-        sed -i.bak "s|GITHUB_ORG|$GITHUB_REPOSITORY_OWNER|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|GITHUB_BRANCH|$GITHUB_REF_NAME|g" bin/ci/service.yml
-    - run: |
-        sed -i.bak "s|GITHUB_BRANCH|$GITHUB_REF_NAME|g" bin/ci/deployment-v2.yml
-    - run: |
-        sed -i.bak "s|PROJECT_ID|$PROJECT_ID|g" bin/ci/deployment-v2.yml
+              description.push(line);
+            }
 
-    # Deploy the Docker image to the GKE cluster
-    - run: |
-        kubectl apply -n ${{ secrets.KUBERNETES_CLUSTER_NAMESPACE }} -f bin/ci/service.yml && \
-        kubectl apply -n ${{ secrets.KUBERNETES_CLUSTER_NAMESPACE }} -f bin/ci/deployment-v2.yml
+            if ( !description.length ) core.setFailed(`Release ${version} not found in the changelog!`);
+
+            core.setOutput('description', description.join('\n') );
+
+      # Setup gcloud CLI
+      - name: Authenticate with Google Cloud
+        id: "auth"
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GKE_SA_KEY }}"
+
+      # Set up Cloud SDK
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v2"
+        with:
+          project_id: ${{ secrets.GKE_PROJECT }}
+
+      # Configure Docker to use the gcloud command-line tool as a credential
+      # helper for authentication
+      - name: Configure Docker authentication for Artifact Registry
+        run: |-
+          gcloud --quiet auth configure-docker $AR_LOCATION-docker.pkg.dev
+
+      # Set lowercase branch name for Docker and k8s compliance
+      - name: Set lowercase branch name
+        run: echo "BRANCH_NAME=$(echo "${{ github.ref_name }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # Build the Docker image
+      - name: Build
+        run: |-
+          docker build \
+            --tag "${{env.IMAGE_NAME}}/${{ env.BRANCH_NAME }}:${{ steps.version.outputs.TAG }}" \
+            --build-arg GITHUB_SHA="$GITHUB_SHA" \
+            --build-arg GITHUB_REF="$GITHUB_REF" \
+            .
+
+      # Push the Docker image to Google Container Registry
+      - name: Publish
+        run: |-
+          docker push "${{env.IMAGE_NAME}}/${{ env.BRANCH_NAME }}:${{ steps.version.outputs.TAG }}"
+
+      # Scan Docker image for vulnerabilities
+      - name: Scan Docker Image using Trivy
+        if: github.ref_name == 'master'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{env.IMAGE_NAME}}/${{ env.BRANCH_NAME }}:${{ steps.version.outputs.TAG }}"
+          exit-code: "0"
+          timeout: "60m0s"
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      # Upload Trivy scan results to GitHub Security tab
+      - name: Upload Trivy scan results to GitHub Security tab
+        if: github.ref_name == 'master'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      # Generate SPDX SBOM
+      - name: Generate SBOM with Anchore Action
+        if: github.ref_name == 'master'
+        id: sbom
+        uses: anchore/sbom-action@v0
+        with:
+          image: "${{env.IMAGE_NAME}}/${{ env.BRANCH_NAME }}:${{ steps.version.outputs.TAG }}"
+          output-file: sbom.spdx.json
+          format: spdx-json
+
+      # Create a release with the version changelog as a description and attach the sbom
+      - name: Create GitHub Release
+        if: github.ref_name == 'master'
+        id: create_github_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Release ${{ steps.version.outputs.TAG }}"
+          body: "${{ steps.changelog.outputs.description }}"
+          tag_name: ${{ steps.version.outputs.TAG }}
+          prerelease: false
+          files: |
+            ./sbom.spdx.json
+
+      # Get GKE credentials
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_REGION }}
+
+      # Deploy secret variables
+      - name: Configure deployment variables and secrets
+        run: |
+          # Required Kubernetes configuration
+          sed -i.bak "s|CLUSTER_NAME_VALUE|${{ vars.GKE_CLUSTER }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|CLUSTER_ENDPOINT_VALUE|${{ secrets.KUBERNETES_CLUSTER_ENDPOINT }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|CLUSTER_SERVICEACCOUNT_VALUE|${{ secrets.KUBERNETES_CLUSTER_SERVICEACCOUNT }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|CLUSTER_USER_TOKEN_VALUE|${{ secrets.KUBERNETES_CLUSTER_USER_TOKEN }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|CLUSTER_CERTIFICATE_VALUE|${{ secrets.KUBERNETES_CLUSTER_CERTIFICATE }}|g" cd/configs/kubernetes/deployment.yml
+
+          # Update service and deployment names with lowercase values
+          for file in cd/configs/kubernetes/*.yml; do
+            sed -i.bak "s|GITHUB_BRANCH|${{ env.BRANCH_NAME }}|g" "$file"
+            sed -i.bak "s|GITHUB_ORG|$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')|g" "$file"
+          done
+
+          # Update configurations
+          sed -i.bak "s|CLUSTER_NAMESPACE_VALUE|${{ secrets.KUBERNETES_CLUSTER_NAMESPACE }}|g" cd/configs/kubernetes/*.yml
+          sed -i.bak "s|ACCESS_TOKEN_VALUE|${{ secrets.ACCESS_TOKEN }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|SLACK_NOTIFICACTION_URL_VALUE|${{ secrets.SLACK_NOTIFICACTION_URL }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|SLACK_NOTIFICACTION_CHANNEL_VALUE|${{ secrets.SLACK_NOTIFICACTION_CHANNEL }}|g" cd/configs/kubernetes/deployment.yml
+
+          # Update image configuration with lowercase values
+          sed -i.bak "s|AR_LOCATION|${{ vars.AR_LOCATION }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|PROJECT_ID|${{ secrets.GKE_PROJECT }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|GITHUB_BRANCH|${{ env.BRANCH_NAME }}|g" cd/configs/kubernetes/deployment.yml
+          sed -i.bak "s|IMAGE_VERSION|${{ steps.version.outputs.TAG }}|g" cd/configs/kubernetes/deployment.yml
+
+      # Deploy the Docker image to the GKE cluster
+      - name: Deploy Kubernetes resources
+        run: |
+          # Deploy service and deployment for all branches
+          kubectl apply -n ${{ secrets.KUBERNETES_CLUSTER_NAMESPACE }} -f cd/configs/kubernetes/service.yml
+          kubectl apply -n ${{ secrets.KUBERNETES_CLUSTER_NAMESPACE }} -f cd/configs/kubernetes/deployment.yml
+
+          # Only deploy cronjob for master branch
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            kubectl apply -n ${{ secrets.KUBERNETES_CLUSTER_NAMESPACE }} -f cd/configs/kubernetes/deployment-restart-cronjob.yml
+          fi
