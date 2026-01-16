@@ -1,4 +1,4 @@
-FROM usabilitydynamics/udx-worker-nodejs:0.14.0
+FROM usabilitydynamics/udx-worker-nodejs:0.24.0
 
 ENV KUBECTL_VERSION=1.32.0 \
     NODE_ENV=production \
@@ -9,15 +9,15 @@ USER root
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     authbind=2.2.0ubuntu1 \
-    wget=1.24.5-2ubuntu1 \
-    gnupg2=2.4.4-2ubuntu23 \
-    apt-transport-https=3.0.0 \
-    libssl-dev=3.4.1-1ubuntu3 \
-    libffi-dev=3.4.7-1 \
-    file=1:5.45-3build1 \
-    openssl=3.4.1-1ubuntu3 \
-    openssh-server=1:9.9p1-3ubuntu3.1 \
-    openssh-client=1:9.9p1-3ubuntu3.1 \
+    wget=1.25.0-2ubuntu3 \
+    gnupg2=2.4.8-2ubuntu2.1 \
+    apt-transport-https=3.1.6ubuntu2 \
+    libssl-dev=3.5.3-1ubuntu2 \
+    libffi-dev=3.5.2-1build1 \
+    file=1:5.46-5build1 \
+    openssl=3.5.3-1ubuntu2 \
+    openssh-server=1:10.0p1-5ubuntu5 \
+    openssh-client=1:10.0p1-5ubuntu5 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
