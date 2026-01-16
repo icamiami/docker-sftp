@@ -1,3 +1,7 @@
+### 0.8.0
+* Fixed loop order in `haveAllKeys` to iterate containers first, then users
+* Fixed bug where first container config was hardcoded and applied to all containers
+
 ### 0.7.5
 * Update NodeJS packages
 * Updated parent image Worker NodeJS to version 0.14.0
