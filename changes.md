@@ -2,6 +2,7 @@
 * Fixed critical bug in the SSH key generation logic where the first container's configuration was being hardcoded and incorrectly applied to all containers. The fix restructures the loop order to iterate over containers first, then users, ensuring each container gets its correct configuration.
 * Updated parent image Worker NodeJS to version 0.24.0
 * Updated system packages
+* Updated NodeJS packages
 
 ### 0.7.5
 * Update NodeJS packages
