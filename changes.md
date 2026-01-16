@@ -1,6 +1,5 @@
 ### 0.8.0
-* Fixed loop order in `haveAllKeys` to iterate containers first, then users
-* Fixed bug where first container config was hardcoded and applied to all containers
+* Fixed critical bug in the SSH key generation logic where the first container's configuration was being hardcoded and incorrectly applied to all containers. The fix restructures the loop order to iterate over containers first, then users, ensuring each container gets its correct configuration.
 
 ### 0.7.5
 * Update NodeJS packages
