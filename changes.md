@@ -1,3 +1,24 @@
+### 0.14.0
+
+* Updated parent image Worker NodeJS to version 0.34.0
+* Upgraded `kubectl` to `1.36.2`
+* Made the kubectl download architecture-aware and checksum-verified
+* Updated production npm dependencies, including Firebase Admin 14
+* Migrated Firebase initialization and Realtime Database access to modular APIs
+* Removed the unused direct Google GAX dependency and optional Firebase services from the runtime install
+* Removed the legacy `@udx/worker-deployment` CLI config in favor of the maintained Kubernetes manifests
+* Added a safe default Worker configuration that deployments can override
+* Updated GitHub Actions checkout to version 7
+
+### 0.13.0
+
+* Updated parent image Worker NodeJS to version 0.33.0
+* Aligned pinned OpenSSL and OpenSSH package versions with the new base image
+* Added Docker Ops-based Dependabot review automation
+* Made Dependabot review automation default to dry-run on schedule
+* Bundled pending Dependabot npm security updates into the release lockfile
+* Fixed `package-lock.json` root version alignment
+
 ### 0.12.0
 
 * Updated parent image Worker NodeJS to version 0.31.0
